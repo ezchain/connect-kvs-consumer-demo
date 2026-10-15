@@ -1,1 +1,5 @@
 target/
+
+# Raw/decoded call audio must never be committed
+*.raw
+*.wav

@@ -13,12 +13,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-public class LMSExample extends KinesisVideoCommon {
+public class LMSStreamConsumer extends KinesisVideoCommon {
 
     private final ExecutorService executorService;
     private final StreamOps streamOps;
@@ -26,9 +28,20 @@ public class LMSExample extends KinesisVideoCommon {
     private final OutputStream outputStreamToCustomer;
     private final String fragmentNumber;
     private final String contactId;
+    private long maxDurationSeconds = 120;
+    private BooleanSupplier stopCondition;
+
+    public void setMaxDurationSeconds(long maxDurationSeconds) {
+        this.maxDurationSeconds = maxDurationSeconds;
+    }
+
+    /** Polled once per second; when it returns true the stream is stopped. */
+    public void setStopCondition(BooleanSupplier stopCondition) {
+        this.stopCondition = stopCondition;
+    }
 
     // constructor with contactId; compare tag with contactId passed in
-    public LMSExample(Regions region,
+    public LMSStreamConsumer(Regions region,
                       String streamName,
                       String fragmentNumber,
                       String contactId,
@@ -45,7 +58,7 @@ public class LMSExample extends KinesisVideoCommon {
     }
 
     // Constructor without contactId; compare tag with first contactId read from the tag
-    public LMSExample(Regions region,
+    public LMSStreamConsumer(Regions region,
                       String streamName,
                       String fragmentNumber,
                       AWSCredentialsProvider credentialsProvider,
@@ -72,15 +85,22 @@ public class LMSExample extends KinesisVideoCommon {
                 LMSCompositeMkvElementVisitor.create(fragmentMetadataVisitor, lmsTagVisitor, lmsDataVisitor)
             );
             
-            executorService.submit(getMediaWorker);
+            Future<?> worker = executorService.submit(getMediaWorker);
 
-            //Wait for the workers to finish.
-            executorService.shutdown();
-            executorService.awaitTermination(120, TimeUnit.SECONDS);
-            if (!executorService.isTerminated()) {
+            // Wait until the stream ends, the stop condition fires, or the maximum duration elapses.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(maxDurationSeconds);
+            while (!worker.isDone() && System.nanoTime() < deadline) {
+                if (stopCondition != null && stopCondition.getAsBoolean()) {
+                    System.out.println("Stop condition met; ending stream");
+                    break;
+                }
+                Thread.sleep(1000);
+            }
+            if (!worker.isDone()) {
                 System.out.println("Shutting down executor service by force");
                 executorService.shutdownNow();
             } else {
+                executorService.shutdown();
                 System.out.println("Executor service is shutdown");
             }
         } finally {

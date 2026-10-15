@@ -51,8 +51,21 @@ public class LMSDataVisitor extends MkvElementVisitor {
             Validate.notNull(frame);
 
             final ByteBuffer frameBuffer = frame.getVal().getFrameData();
-            final String trackName  = fragmentMetadataVisitor.getMkvTrackMetadata(frame.getVal().getTrackNumber()).getTrackName();
-            
+            final com.amazonaws.kinesisvideo.parser.utilities.MkvTrackMetadata trackMetadata = fragmentMetadataVisitor
+                .getMkvTrackMetadata(frame.getVal().getTrackNumber());
+            final String trackName = trackMetadata.getTrackName();
+
+            System.out.printf(
+                "Audio track: name=%s, codecId=%s, codecName=%s, " +
+                "sampleRate=%s, channels=%s, bitDepth=%s%n",
+                trackMetadata.getTrackName(),
+                trackMetadata.getCodecId(),
+                trackMetadata.getCodecName(),
+                trackMetadata.getSamplingFrequency().orElse(null),
+                trackMetadata.getChannels().orElse(null),
+                trackMetadata.getBitDepth().orElse(null)
+            );
+
             try {
                 byte[] frameBytes = new byte[frameBuffer.remaining()];
                 frameBuffer.get(frameBytes);
